@@ -142,18 +142,22 @@ def fit_plackett_luce(
 # ---------------------------------------------------------------------------
 
 def _bootstrap_chunk(args: tuple) -> tuple[np.ndarray, np.ndarray]:
-    """Worker: runs a chunk of bootstrap iterations. Top-level for pickling."""
-    records, players, n_iter, lam, seed = args
+    """Worker: runs a chunk of bootstrap iterations. Top-level for pickling.
+
+    Resamples whole games (cluster bootstrap) so within-game dependence is respected.
+    games is a list of lists; each inner list is all records from one game.
+    """
+    games, players, n_iter, lam, seed = args
     rng = np.random.default_rng(seed)
-    n_records = len(records)
+    n_games = len(games)
     n_players = len(players)
 
     skill_samples = np.zeros((n_iter, n_players))
     rank_samples  = np.zeros((n_iter, n_players), dtype=int)
 
     for b in range(n_iter):
-        indices = rng.integers(0, n_records, size=n_records)
-        sample = [records[i] for i in indices]
+        game_indices = rng.integers(0, n_games, size=n_games)
+        sample = [rec for gi in game_indices for rec in games[gi]]
 
         present_global = sorted({gi for rec in sample for gi in rec["eligible"]})
         if len(present_global) < 2:
@@ -199,28 +203,35 @@ def bootstrap_plackett_luce(
     verbose: bool = True,
 ) -> pd.DataFrame:
     """
-    Resample game-tossup records with replacement and refit the PL model each time.
-    Parallelises across CPU cores — each core gets an independent chunk of iterations.
+    Game-level cluster bootstrap: resample whole games (all tossups from a matchup)
+    with replacement, then refit PL. This respects within-game dependence (shared players,
+    moderator pace, etc.) and produces wider, more honest CIs than event-level resampling.
 
-    Players absent from a bootstrap sample are assigned skill = 0 (L2 prior mean),
-    allowing full-field ranking in every sample.
+    Parallelises across CPU cores — each core gets an independent chunk of iterations.
+    Players absent from a bootstrap sample are assigned skill = 0 (L2 prior mean).
 
     Returns a DataFrame indexed by player_slug with columns:
         ci_low, ci_high       — 2.5th / 97.5th percentile of skill across samples
         p_top{k} for each k in rank_thresholds
     """
+    # Group records by game_id for cluster resampling
+    game_buckets: dict[str, list[dict]] = defaultdict(list)
+    for rec in records:
+        game_buckets[rec["game_id"]].append(rec)
+    games = list(game_buckets.values())
+
     n_workers = multiprocessing.cpu_count()
     # Split iterations as evenly as possible across workers
     base, remainder = divmod(n_bootstrap, n_workers)
     chunk_sizes = [base + (1 if i < remainder else 0) for i in range(n_workers)]
     # Each worker gets a well-separated seed so their RNG streams don't overlap
     worker_args = [
-        (records, players, chunk_sizes[i], lam, seed + i * 100_000)
+        (games, players, chunk_sizes[i], lam, seed + i * 100_000)
         for i in range(n_workers)
     ]
 
     if verbose:
-        print(f"  Parallelising {n_bootstrap} iterations across {n_workers} cores...", flush=True)
+        print(f"  Cluster bootstrap: {len(games)} games, {n_bootstrap} iterations across {n_workers} cores...", flush=True)
 
     with multiprocessing.Pool(n_workers) as pool:
         results = pool.map(_bootstrap_chunk, worker_args)
@@ -263,9 +274,12 @@ def load_data(path: str, aggregate: bool = True) -> pd.DataFrame:
 
 def build_tossup_records(df: pd.DataFrame) -> tuple[list[dict], list[str]]:
     """
-    Returns (tossups, players) where:
-      tossups: list of {tossup_slug, category, winner_slug, winner_idx, eligible: [idx]}
+    Returns (records, players) where:
+      records: list of {tossup_slug, game_id, category, winner_slug, winner_idx, eligible: [idx]}
       players: ordered list of player slugs (index = player_idx)
+
+    Neg handling: players who negged are removed from the eligible set rather than
+    discarding the event. The winner faced the reduced field — PL handles variable set sizes.
     """
     players = sorted(df["player_slug"].unique())
     pidx = {p: i for i, p in enumerate(players)}
@@ -277,6 +291,7 @@ def build_tossup_records(df: pd.DataFrame) -> tuple[list[dict], list[str]]:
     group_cols = ["tossup_slug", "game_id"] if "game_id" in df.columns else ["tossup_slug"]
     for _, grp in df.groupby(group_cols):
         category = grp["category"].iloc[0]
+        game_id = grp["game_id"].iloc[0] if "game_id" in grp.columns else grp["tossup_slug"].iloc[0]
 
         # Winner
         winners = grp[grp["won"] == True]
@@ -286,14 +301,10 @@ def build_tossup_records(df: pd.DataFrame) -> tuple[list[dict], list[str]]:
         winner_slug = winners.iloc[0]["player_slug"]
         winner_idx = pidx[winner_slug]
 
-        # Discard this game if any neg occurred — rebound wins have reduced competition.
-        # Because we group by game_id, this only drops the specific game where the neg
-        # happened; other teams playing the same tossup are in separate groups and unaffected.
-        if (grp["buzz_value"] == -5).any():
-            skipped_trivial += 1
-            continue
-
-        eligible_slugs = list(grp["player_slug"].unique())
+        # Remove negging players from the eligible set — they can't win after a neg.
+        # The winner faced the remaining field; PL handles variable eligible-set sizes natively.
+        neg_slugs = set(grp.loc[grp["buzz_value"] == -5, "player_slug"])
+        eligible_slugs = [p for p in grp["player_slug"].unique() if p not in neg_slugs]
         eligible_idxs = [pidx[p] for p in eligible_slugs]
 
         if len(eligible_idxs) <= 1:
@@ -302,6 +313,7 @@ def build_tossup_records(df: pd.DataFrame) -> tuple[list[dict], list[str]]:
 
         records.append({
             "tossup_slug": grp["tossup_slug"].iloc[0],
+            "game_id": game_id,
             "category": category,
             "winner_slug": winner_slug,
             "winner_idx": winner_idx,
