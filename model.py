@@ -8,6 +8,7 @@ Usage:
 """
 
 import argparse
+import multiprocessing
 import time
 import warnings
 from collections import defaultdict
@@ -140,53 +141,26 @@ def fit_plackett_luce(
 # Bootstrap confidence intervals
 # ---------------------------------------------------------------------------
 
-def bootstrap_plackett_luce(
-    records: list[dict],
-    players: list[str],
-    n_bootstrap: int = 200,
-    lam: float = 0.1,
-    seed: int = 42,
-    rank_thresholds: tuple[int, ...] = (5, 10, 20),
-    verbose: bool = True,
-) -> pd.DataFrame:
-    """
-    Resample game-tossup records with replacement and refit the PL model each time.
-
-    Players absent from a bootstrap sample are assigned skill = 0 (L2 prior mean),
-    allowing full-field ranking in every sample.
-
-    Returns a DataFrame indexed by player_slug with columns:
-        ci_low, ci_high       — 2.5th / 97.5th percentile of skill across samples
-        p_top{k} for each k in rank_thresholds
-    """
+def _bootstrap_chunk(args: tuple) -> tuple[np.ndarray, np.ndarray]:
+    """Worker: runs a chunk of bootstrap iterations. Top-level for pickling."""
+    records, players, n_iter, lam, seed = args
     rng = np.random.default_rng(seed)
     n_records = len(records)
     n_players = len(players)
 
-    skill_samples = np.zeros((n_bootstrap, n_players))
-    rank_samples  = np.zeros((n_bootstrap, n_players), dtype=int)
+    skill_samples = np.zeros((n_iter, n_players))
+    rank_samples  = np.zeros((n_iter, n_players), dtype=int)
 
-    if verbose:
-        print(f"  Running {n_bootstrap} bootstrap iterations...", flush=True)
-    for b in range(n_bootstrap):
-        if (b + 1) % 50 == 0:
-            if verbose:
-                print(f"    {b + 1}/{n_bootstrap}", flush=True)
-
-        # Resample records with replacement
+    for b in range(n_iter):
         indices = rng.integers(0, n_records, size=n_records)
         sample = [records[i] for i in indices]
 
-        # Present = global player indices that appear in at least one eligible set
         present_global = sorted({gi for rec in sample for gi in rec["eligible"]})
         if len(present_global) < 2:
-            skill_samples[b] = 0.0
             rank_samples[b] = n_players
             continue
 
-        # Map global index -> local index for this sample
         global_to_local = {gi: li for li, gi in enumerate(present_global)}
-
         local_records = []
         for rec in sample:
             w_global = rec["winner_idx"]
@@ -200,21 +174,59 @@ def bootstrap_plackett_luce(
             local_records.append({"winner_idx": local_winner, "eligible": local_elig})
 
         if not local_records:
-            skill_samples[b] = 0.0
             rank_samples[b] = n_players
             continue
 
         present_players = [players[gi] for gi in present_global]
         local_skills = fit_plackett_luce(local_records, present_players, lam=lam)
 
-        # Write back into full-player array; absent players keep 0 (prior mean)
         full_skills = np.zeros(n_players)
         for li, gi in enumerate(present_global):
             full_skills[gi] = local_skills[li]
         skill_samples[b] = full_skills
-
-        # Rank all players in this sample (1 = best)
         rank_samples[b] = scipy.stats.rankdata(-full_skills, method="min")
+
+    return skill_samples, rank_samples
+
+
+def bootstrap_plackett_luce(
+    records: list[dict],
+    players: list[str],
+    n_bootstrap: int = 200,
+    lam: float = 0.1,
+    seed: int = 42,
+    rank_thresholds: tuple[int, ...] = (5, 10, 20),
+    verbose: bool = True,
+) -> pd.DataFrame:
+    """
+    Resample game-tossup records with replacement and refit the PL model each time.
+    Parallelises across CPU cores — each core gets an independent chunk of iterations.
+
+    Players absent from a bootstrap sample are assigned skill = 0 (L2 prior mean),
+    allowing full-field ranking in every sample.
+
+    Returns a DataFrame indexed by player_slug with columns:
+        ci_low, ci_high       — 2.5th / 97.5th percentile of skill across samples
+        p_top{k} for each k in rank_thresholds
+    """
+    n_workers = multiprocessing.cpu_count()
+    # Split iterations as evenly as possible across workers
+    base, remainder = divmod(n_bootstrap, n_workers)
+    chunk_sizes = [base + (1 if i < remainder else 0) for i in range(n_workers)]
+    # Each worker gets a well-separated seed so their RNG streams don't overlap
+    worker_args = [
+        (records, players, chunk_sizes[i], lam, seed + i * 100_000)
+        for i in range(n_workers)
+    ]
+
+    if verbose:
+        print(f"  Parallelising {n_bootstrap} iterations across {n_workers} cores...", flush=True)
+
+    with multiprocessing.Pool(n_workers) as pool:
+        results = pool.map(_bootstrap_chunk, worker_args)
+
+    skill_samples = np.vstack([r[0] for r in results])
+    rank_samples  = np.vstack([r[1] for r in results])
 
     ci_low  = np.percentile(skill_samples, 2.5,  axis=0)
     ci_high = np.percentile(skill_samples, 97.5, axis=0)
