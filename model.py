@@ -8,6 +8,7 @@ Usage:
 """
 
 import argparse
+import time
 import warnings
 from collections import defaultdict
 from itertools import combinations
@@ -145,52 +146,55 @@ def bootstrap_plackett_luce(
     n_bootstrap: int = 200,
     lam: float = 0.1,
     seed: int = 42,
+    rank_thresholds: tuple[int, ...] = (5, 10, 20),
+    verbose: bool = True,
 ) -> pd.DataFrame:
     """
     Resample game-tossup records with replacement and refit the PL model each time.
 
-    Players absent from a bootstrap sample (none of their eligible sets were drawn)
-    are assigned skill = 0, consistent with the L2 prior that shrinks toward zero.
-    This lets us rank every player in every sample and compute rank probabilities.
+    Players absent from a bootstrap sample are assigned skill = 0 (L2 prior mean),
+    allowing full-field ranking in every sample.
 
     Returns a DataFrame indexed by player_slug with columns:
-        ci_low, ci_high   — 2.5th / 97.5th percentile of skill across samples
-        p_top5, p_top10, p_top20  — fraction of samples where rank <= threshold
+        ci_low, ci_high       — 2.5th / 97.5th percentile of skill across samples
+        p_top{k} for each k in rank_thresholds
     """
     rng = np.random.default_rng(seed)
     n_records = len(records)
     n_players = len(players)
-    pidx = {p: i for i, p in enumerate(players)}
 
-    skill_samples = np.zeros((n_bootstrap, n_players))  # absent → 0 (prior mean)
+    skill_samples = np.zeros((n_bootstrap, n_players))
     rank_samples  = np.zeros((n_bootstrap, n_players), dtype=int)
 
-    print(f"  Running {n_bootstrap} bootstrap iterations...", flush=True)
+    if verbose:
+        print(f"  Running {n_bootstrap} bootstrap iterations...", flush=True)
     for b in range(n_bootstrap):
         if (b + 1) % 50 == 0:
-            print(f"    {b + 1}/{n_bootstrap}", flush=True)
+            if verbose:
+                print(f"    {b + 1}/{n_bootstrap}", flush=True)
 
         # Resample records with replacement
         indices = rng.integers(0, n_records, size=n_records)
         sample = [records[i] for i in indices]
 
-        # Identify players present in this sample (appear in at least one eligible set)
-        present = sorted({p for rec in sample for p in rec["eligible"]})
-        if len(present) < 2:
+        # Present = global player indices that appear in at least one eligible set
+        present_global = sorted({gi for rec in sample for gi in rec["eligible"]})
+        if len(present_global) < 2:
             skill_samples[b] = 0.0
-            rank_samples[b] = n_players  # everyone gets last rank; sample is unusable
+            rank_samples[b] = n_players
             continue
 
-        # Remap eligible sets to local indices
-        local_pidx = {p: i for i, p in enumerate(present)}
+        # Map global index -> local index for this sample
+        global_to_local = {gi: li for li, gi in enumerate(present_global)}
+
         local_records = []
         for rec in sample:
-            winner_slug = players[rec["winner_idx"]]
-            if winner_slug not in local_pidx:
+            w_global = rec["winner_idx"]
+            if w_global not in global_to_local:
                 continue
-            local_elig = [local_pidx[players[gi]] for gi in rec["eligible"]
-                          if players[gi] in local_pidx]
-            local_winner = local_pidx[winner_slug]
+            local_elig = [global_to_local[gi] for gi in rec["eligible"]
+                          if gi in global_to_local]
+            local_winner = global_to_local[w_global]
             if local_winner not in local_elig or len(local_elig) < 2:
                 continue
             local_records.append({"winner_idx": local_winner, "eligible": local_elig})
@@ -200,12 +204,13 @@ def bootstrap_plackett_luce(
             rank_samples[b] = n_players
             continue
 
-        local_skills = fit_plackett_luce(local_records, present, lam=lam)
+        present_players = [players[gi] for gi in present_global]
+        local_skills = fit_plackett_luce(local_records, present_players, lam=lam)
 
-        # Write back into full-player array; absent players keep 0
+        # Write back into full-player array; absent players keep 0 (prior mean)
         full_skills = np.zeros(n_players)
-        for local_i, p in enumerate(present):
-            full_skills[pidx[p]] = local_skills[local_i]
+        for li, gi in enumerate(present_global):
+            full_skills[gi] = local_skills[li]
         skill_samples[b] = full_skills
 
         # Rank all players in this sample (1 = best)
@@ -213,17 +218,12 @@ def bootstrap_plackett_luce(
 
     ci_low  = np.percentile(skill_samples, 2.5,  axis=0)
     ci_high = np.percentile(skill_samples, 97.5, axis=0)
-    p_top5  = (rank_samples <= 5).mean(axis=0)
-    p_top10 = (rank_samples <= 10).mean(axis=0)
-    p_top20 = (rank_samples <= 20).mean(axis=0)
 
-    return pd.DataFrame({
-        "ci_low":   ci_low,
-        "ci_high":  ci_high,
-        "p_top5":   p_top5,
-        "p_top10":  p_top10,
-        "p_top20":  p_top20,
-    }, index=players)
+    result = {"ci_low": ci_low, "ci_high": ci_high}
+    for k in rank_thresholds:
+        result[f"p_top{k}"] = (rank_samples <= k).mean(axis=0)
+
+    return pd.DataFrame(result, index=players)
 
 
 # ---------------------------------------------------------------------------
@@ -342,7 +342,9 @@ def run_overall_model(
 
     if n_bootstrap > 0:
         print(f"\nBootstrapping overall model ({n_bootstrap} iterations)...")
+        t0 = time.perf_counter()
         boot = bootstrap_plackett_luce(records, players, n_bootstrap=n_bootstrap, lam=lam)
+        print(f"  Overall bootstrap done in {time.perf_counter() - t0:.1f}s")
     else:
         boot = None
     return result, boot
@@ -355,17 +357,18 @@ def run_overall_model(
 def run_category_models(
     df: pd.DataFrame,
     lam: float = 0.1,
-) -> pd.DataFrame:
+    n_bootstrap: int = 200,
+) -> tuple[pd.DataFrame, dict[str, pd.DataFrame]]:
     """
-    Returns a DataFrame indexed by player_slug with one column per category.
-    Only cells where the player meets the MIN_BUZZES threshold for that category
-    are filled; others NaN.
+    Returns (skill_matrix, cat_boots) where:
+      skill_matrix  — players x categories, NaN below min_buzzes threshold
+      cat_boots     — {category: bootstrap DataFrame with ci_low/ci_high/p_top3/p_top5}
+                      only rows for players who qualified in the point estimate
     """
     print(f"\n=== Per-Category Plackett-Luce Models ===")
     categories = sorted(df["category"].unique())
     print(f"Categories: {categories}")
 
-    # Count correct buzzes per (player, category)
     gets_by_cat = (
         df[df["won"] == True]
         .groupby(["player_slug", "category"])
@@ -374,9 +377,8 @@ def run_category_models(
     )
 
     all_players = sorted(df["player_slug"].unique())
-
-    # Build as a dict of dicts to avoid pandas CoW issues with .loc in a loop
     data: dict[str, dict[str, float]] = {cat: {} for cat in categories}
+    cat_boots: dict[str, pd.DataFrame] = {}
 
     for cat in categories:
         threshold = MIN_BUZZES.get(cat, 5)
@@ -394,10 +396,21 @@ def run_category_models(
             if n_gets >= threshold:
                 data[cat][ps] = float(sk)
 
-        print(f"  {cat} (min_buzzes={threshold}): {len(records)} tossups, {len(data[cat])} players qualify")
+        qualified = list(data[cat].keys())
+        print(f"  {cat} (min_buzzes={threshold}): {len(records)} tossups, {len(qualified)} players qualify")
+
+        if n_bootstrap > 0 and len(records) >= 5:
+            t0 = time.perf_counter()
+            boot = bootstrap_plackett_luce(
+                records, cat_players, n_bootstrap=n_bootstrap, lam=lam,
+                rank_thresholds=(3, 5), verbose=False,
+            )
+            elapsed = time.perf_counter() - t0
+            cat_boots[cat] = boot.loc[[p for p in qualified if p in boot.index]]
+            print(f"    bootstrap done in {elapsed:.1f}s")
 
     skill_matrix = pd.DataFrame(data, index=all_players, dtype=float)
-    return skill_matrix
+    return skill_matrix, cat_boots
 
 
 # ---------------------------------------------------------------------------
@@ -541,6 +554,7 @@ def generate_report(
     overall_result: pd.DataFrame,
     skill_matrix: pd.DataFrame,
     boot: pd.DataFrame | None = None,
+    cat_boots: dict[str, pd.DataFrame] | None = None,
     output_dir: str = ".",
 ):
     """Write results/report.md with overall and per-category rankings."""
@@ -555,13 +569,12 @@ def generate_report(
         lines.append("| Rank | Player | Team | Skill | Gets | Heard |")
         lines.append("|------|--------|------|------:|-----:|------:|")
 
-    boot_idx = boot.set_index(boot.index) if boot is not None else None
     for rank, row in overall_result.head(REPORT_TOP_OVERALL).iterrows():
         p = row["player_slug"]
         base = (f"| {rank} | {p} | {row['team_slug']} "
                 f"| {row['skill_estimate']:.3f}")
-        if boot_idx is not None and p in boot_idx.index:
-            b = boot_idx.loc[p]
+        if boot is not None and p in boot.index:
+            b = boot.loc[p]
             base += (f" | [{b['ci_low']:.3f}, {b['ci_high']:.3f}]"
                      f" | {b['p_top5']:.0%} | {b['p_top10']:.0%} | {b['p_top20']:.0%}")
         base += f" | {row['total_gets']} | {row['total_tossups_heard']} |"
@@ -576,16 +589,26 @@ def generate_report(
         col = skill_matrix[cat].dropna().sort_values(ascending=False)
         if col.empty:
             continue
+        cb = (cat_boots or {}).get(cat)
         lines.append(f"\n## {cat} (Top {n})\n")
-        lines.append("| Rank | Player | Team | Category Skill | Overall Skill |")
-        lines.append("|------|--------|------|---------------:|--------------:|")
+        if cb is not None:
+            lines.append("| Rank | Player | Team | Category Skill | 95% CI | P(Top 3) | P(Top 5) | Overall Skill |")
+            lines.append("|------|--------|------|---------------:|-------:|---------:|---------:|--------------:|")
+        else:
+            lines.append("| Rank | Player | Team | Category Skill | Overall Skill |")
+            lines.append("|------|--------|------|---------------:|--------------:|")
         for rank, (player, skill) in enumerate(col.head(n).items(), 1):
             team = overall_team.get(player, "")
-            overall = overall_skill.get(player, float("nan"))
-            lines.append(
-                f"| {rank} | {player} | {team} "
-                f"| {skill:.3f} | {overall:.3f} |"
-            )
+            ov = overall_skill.get(player, float("nan"))
+            row_str = f"| {rank} | {player} | {team} | {skill:.3f}"
+            if cb is not None and player in cb.index:
+                b = cb.loc[player]
+                row_str += (f" | [{b['ci_low']:.3f}, {b['ci_high']:.3f}]"
+                            f" | {b['p_top3']:.0%} | {b['p_top5']:.0%}")
+            elif cb is not None:
+                row_str += " | — | — | —"
+            row_str += f" | {ov:.3f} |"
+            lines.append(row_str)
 
     report_path = f"{output_dir}/report.md"
     with open(report_path, "w", encoding="utf-8") as f:
@@ -624,8 +647,8 @@ def main():
         boot.to_csv(f"{args.output_dir}/bootstrap_overall.csv")
         print(f"Saved bootstrap summary to {args.output_dir}/bootstrap_overall.csv")
 
-    # Category models
-    skill_matrix = run_category_models(df, lam=args.lam)
+    # Category models + bootstrap
+    skill_matrix, cat_boots = run_category_models(df, lam=args.lam, n_bootstrap=args.bootstrap)
     matrix_out = f"{args.output_dir}/category_skills.csv"
     skill_matrix.to_csv(matrix_out)
     print(f"Saved category skill matrix to {matrix_out}")
@@ -637,13 +660,15 @@ def main():
 
     # Markdown report — always uses aggregated categories
     if args.aggregate_categories:
-        report_overall, report_matrix, report_boot = overall_result, skill_matrix, boot
+        report_overall, report_matrix = overall_result, skill_matrix
+        report_boot, report_cat_boots = boot, cat_boots
     else:
         print("\nBuilding aggregated data for report...")
         df_agg = load_data(args.input, aggregate=True)
         report_overall, report_boot = run_overall_model(df_agg, lam=args.lam, n_bootstrap=args.bootstrap)
-        report_matrix = run_category_models(df_agg, lam=args.lam)
-    generate_report(report_overall, report_matrix, boot=report_boot, output_dir=args.output_dir)
+        report_matrix, report_cat_boots = run_category_models(df_agg, lam=args.lam, n_bootstrap=args.bootstrap)
+    generate_report(report_overall, report_matrix, boot=report_boot,
+                    cat_boots=report_cat_boots, output_dir=args.output_dir)
 
     print("\nDone.")
 
