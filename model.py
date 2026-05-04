@@ -340,8 +340,11 @@ def run_overall_model(
     print(f"\nTop 20 players (overall):")
     print(result[["player_slug", "team_slug", "skill_estimate", "total_gets", "total_tossups_heard"]].head(20).to_string())
 
-    print(f"\nBootstrapping overall model ({n_bootstrap} iterations)...")
-    boot = bootstrap_plackett_luce(records, players, n_bootstrap=n_bootstrap, lam=lam)
+    if n_bootstrap > 0:
+        print(f"\nBootstrapping overall model ({n_bootstrap} iterations)...")
+        boot = bootstrap_plackett_luce(records, players, n_bootstrap=n_bootstrap, lam=lam)
+    else:
+        boot = None
     return result, boot
 
 
@@ -534,19 +537,35 @@ REPORT_TOP_N_DEFAULT = 10
 REPORT_TOP_OVERALL = 30
 
 
-def generate_report(overall_result: pd.DataFrame, skill_matrix: pd.DataFrame, output_dir: str = "."):
+def generate_report(
+    overall_result: pd.DataFrame,
+    skill_matrix: pd.DataFrame,
+    boot: pd.DataFrame | None = None,
+    output_dir: str = ".",
+):
     """Write results/report.md with overall and per-category rankings."""
     lines = ["# Plackett-Luce Rankings Report\n"]
 
     # Overall
     lines.append(f"## Overall (Top {REPORT_TOP_OVERALL})\n")
-    lines.append("| Rank | Player | Team | Skill | Gets | Heard |")
-    lines.append("|------|--------|------|------:|-----:|------:|")
+    if boot is not None:
+        lines.append("| Rank | Player | Team | Skill | 95% CI | P(Top 5) | P(Top 10) | P(Top 20) | Gets | Heard |")
+        lines.append("|------|--------|------|------:|-------:|---------:|----------:|----------:|-----:|------:|")
+    else:
+        lines.append("| Rank | Player | Team | Skill | Gets | Heard |")
+        lines.append("|------|--------|------|------:|-----:|------:|")
+
+    boot_idx = boot.set_index(boot.index) if boot is not None else None
     for rank, row in overall_result.head(REPORT_TOP_OVERALL).iterrows():
-        lines.append(
-            f"| {rank} | {row['player_slug']} | {row['team_slug']} "
-            f"| {row['skill_estimate']:.3f} | {row['total_gets']} | {row['total_tossups_heard']} |"
-        )
+        p = row["player_slug"]
+        base = (f"| {rank} | {p} | {row['team_slug']} "
+                f"| {row['skill_estimate']:.3f}")
+        if boot_idx is not None and p in boot_idx.index:
+            b = boot_idx.loc[p]
+            base += (f" | [{b['ci_low']:.3f}, {b['ci_high']:.3f}]"
+                     f" | {b['p_top5']:.0%} | {b['p_top10']:.0%} | {b['p_top20']:.0%}")
+        base += f" | {row['total_gets']} | {row['total_tossups_heard']} |"
+        lines.append(base)
 
     # Per-category — always use the aggregated skill matrix
     overall_skill = overall_result.set_index("player_slug")["skill_estimate"]
@@ -582,6 +601,7 @@ def main():
     parser = argparse.ArgumentParser(description="Fit Plackett-Luce model on buzzpoints data")
     parser.add_argument("--input", default="buzzpoints_data.csv", help="CSV from scraper.py")
     parser.add_argument("--lam", type=float, default=0.1, help="L2 regularization lambda")
+    parser.add_argument("--bootstrap", type=int, default=200, help="Number of bootstrap iterations (0 to skip)")
     parser.add_argument("--output-dir", default=".", help="Directory for output files")
     parser.add_argument("--aggregate-categories", action="store_true",
                         help="Aggregate subcategories (e.g. Science - Biology -> Science)")
@@ -595,11 +615,14 @@ def main():
     # Load
     df = load_data(args.input, aggregate=args.aggregate_categories)
 
-    # Overall model
-    overall_result = run_overall_model(df, lam=args.lam)
+    # Overall model + bootstrap
+    overall_result, boot = run_overall_model(df, lam=args.lam, n_bootstrap=args.bootstrap)
     overall_out = f"{args.output_dir}/overall_rankings.csv"
     overall_result.to_csv(overall_out)
     print(f"\nSaved overall rankings to {overall_out}")
+    if boot is not None:
+        boot.to_csv(f"{args.output_dir}/bootstrap_overall.csv")
+        print(f"Saved bootstrap summary to {args.output_dir}/bootstrap_overall.csv")
 
     # Category models
     skill_matrix = run_category_models(df, lam=args.lam)
@@ -614,13 +637,13 @@ def main():
 
     # Markdown report — always uses aggregated categories
     if args.aggregate_categories:
-        report_overall, report_matrix = overall_result, skill_matrix
+        report_overall, report_matrix, report_boot = overall_result, skill_matrix, boot
     else:
         print("\nBuilding aggregated data for report...")
         df_agg = load_data(args.input, aggregate=True)
-        report_overall = run_overall_model(df_agg, lam=args.lam)
+        report_overall, report_boot = run_overall_model(df_agg, lam=args.lam, n_bootstrap=args.bootstrap)
         report_matrix = run_category_models(df_agg, lam=args.lam)
-    generate_report(report_overall, report_matrix, output_dir=args.output_dir)
+    generate_report(report_overall, report_matrix, boot=report_boot, output_dir=args.output_dir)
 
     print("\nDone.")
 
