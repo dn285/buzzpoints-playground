@@ -76,10 +76,10 @@ def fit_plackett_luce(
     lam: float = 0.1,
 ) -> np.ndarray:
     """
-    Fit PL model.
+    Fit PL model (no difficulty parameters — legacy / fallback).
 
     tossups: list of {"winner_idx": int, "eligible": [int, ...]}
-             indices into `players` list.
+             indices into `players` list.  Dead-tossup records (dead=True) are skipped.
     players: ordered list of player IDs (for index mapping).
     lam: L2 regularization strength.
 
@@ -92,6 +92,8 @@ def fit_plackett_luce(
     def neg_log_likelihood(s):
         ll = 0.0
         for t in tossups:
+            if t.get("dead", False):
+                continue
             wi = t["winner_idx"]
             elig = t["eligible"]
             if len(elig) == 0:
@@ -108,6 +110,8 @@ def fit_plackett_luce(
     def grad(s):
         g = np.zeros(n)
         for t in tossups:
+            if t.get("dead", False):
+                continue
             wi = t["winner_idx"]
             elig = t["eligible"]
             if len(elig) == 0:
@@ -137,15 +141,111 @@ def fit_plackett_luce(
     return s
 
 
+def fit_plackett_luce_with_difficulty(
+    tossups: list[dict],
+    players: list[str],
+    lam: float = 0.1,
+    lam_d: float = 0.1,
+) -> tuple[np.ndarray, list[str], np.ndarray]:
+    """
+    Fit PL model jointly estimating player skill and per-tossup difficulty.
+
+    Each tossup acts as a virtual competitor: the difficulty parameter d_t represents
+    the log-odds that the question goes dead relative to a player with skill 0.
+
+    For won events:   LL += s[winner] - log(exp(d_t) + sum(exp(s[k]) for k in eligible))
+    For dead events:  LL += d_t       - log(exp(d_t) + sum(exp(s[k]) for k in eligible))
+
+    tossups: records with keys tossup_slug, eligible, dead (bool), winner_idx (if not dead).
+    players: ordered list of player slugs.
+    lam:   L2 lambda for skill params.
+    lam_d: L2 lambda for difficulty params.
+
+    Returns (skills, tossup_slugs, difficulties):
+      skills:        shape (n_players,), mean-centered post-fit
+      tossup_slugs:  sorted list of unique tossup slugs in this dataset
+      difficulties:  shape (n_tossups,), same scale as skills after centering
+    """
+    n = len(players)
+    if n == 0:
+        return np.array([]), [], np.array([])
+
+    tossup_slugs = sorted({r["tossup_slug"] for r in tossups})
+    m = len(tossup_slugs)
+    tidx = {sl: i for i, sl in enumerate(tossup_slugs)}
+
+    def neg_log_likelihood(theta):
+        s = theta[:n]
+        d = theta[n:]
+        ll = 0.0
+        for t in tossups:
+            ti = tidx[t["tossup_slug"]]
+            elig = t["eligible"]
+            dead = t.get("dead", False)
+            vals = np.empty(1 + len(elig))
+            vals[0] = d[ti]
+            if len(elig):
+                vals[1:] = s[np.array(elig)]
+            max_v = np.max(vals)
+            lse = max_v + np.log(np.sum(np.exp(vals - max_v)))
+            ll += (d[ti] if dead else s[t["winner_idx"]]) - lse
+        ll -= lam * np.dot(s, s)
+        ll -= lam_d * np.dot(d, d)
+        return -ll
+
+    def grad_func(theta):
+        s = theta[:n]
+        d = theta[n:]
+        g = np.zeros(n + m)
+        for t in tossups:
+            ti = tidx[t["tossup_slug"]]
+            elig = t["eligible"]
+            dead = t.get("dead", False)
+            vals = np.empty(1 + len(elig))
+            vals[0] = d[ti]
+            if len(elig):
+                vals[1:] = s[np.array(elig)]
+            max_v = np.max(vals)
+            exp_v = np.exp(vals - max_v)
+            probs = exp_v / exp_v.sum()
+            # Credit the winner (+1)
+            if dead:
+                g[n + ti] += 1.0
+            else:
+                g[t["winner_idx"]] += 1.0
+            # Subtract expected probabilities from all competitors
+            g[n + ti] -= probs[0]
+            for j, pidx in enumerate(elig):
+                g[pidx] -= probs[1 + j]
+        g[:n] -= 2.0 * lam * s
+        g[n:] -= 2.0 * lam_d * d
+        return -g
+
+    theta0 = np.zeros(n + m)
+    result = scipy.optimize.minimize(
+        neg_log_likelihood,
+        theta0,
+        jac=grad_func,
+        method="L-BFGS-B",
+        options={"maxiter": 2000, "ftol": 1e-10},
+    )
+    s = result.x[:n]
+    d = result.x[n:]
+    # Center skills at zero; difficulties stay on the same relative scale
+    s -= s.mean()
+    return s, tossup_slugs, d
+
+
 # ---------------------------------------------------------------------------
 # Bootstrap confidence intervals
 # ---------------------------------------------------------------------------
 
 def _bootstrap_chunk(args: tuple) -> tuple[np.ndarray, np.ndarray]:
-    """Worker: runs a chunk of bootstrap iterations. Top-level for pickling.
+    """Worker: runs a chunk of bootstrap iterations (no-difficulty model). Top-level for pickling.
 
     Resamples whole games (cluster bootstrap) so within-game dependence is respected.
     games is a list of lists; each inner list is all records from one game.
+    Dead-tossup records in the sample are ignored (winner_idx=None skips the filter).
     """
     games, players, n_iter, lam, seed = args
     rng = np.random.default_rng(seed)
@@ -220,7 +320,7 @@ def bootstrap_plackett_luce(
         game_buckets[rec["game_id"]].append(rec)
     games = list(game_buckets.values())
 
-    n_workers = multiprocessing.cpu_count()
+    n_workers = multiprocessing.cpu_count() - 2
     # Split iterations as evenly as possible across workers
     base, remainder = divmod(n_bootstrap, n_workers)
     chunk_sizes = [base + (1 if i < remainder else 0) for i in range(n_workers)]
@@ -235,6 +335,118 @@ def bootstrap_plackett_luce(
 
     with multiprocessing.Pool(n_workers) as pool:
         results = pool.map(_bootstrap_chunk, worker_args)
+
+    skill_samples = np.vstack([r[0] for r in results])
+    rank_samples  = np.vstack([r[1] for r in results])
+
+    ci_low  = np.percentile(skill_samples, 2.5,  axis=0)
+    ci_high = np.percentile(skill_samples, 97.5, axis=0)
+
+    result = {"ci_low": ci_low, "ci_high": ci_high}
+    for k in rank_thresholds:
+        result[f"p_top{k}"] = (rank_samples <= k).mean(axis=0)
+
+    return pd.DataFrame(result, index=players)
+
+
+def _bootstrap_chunk_with_difficulty(args: tuple) -> tuple[np.ndarray, np.ndarray]:
+    """Worker: runs a chunk of bootstrap iterations for the difficulty model. Top-level for pickling."""
+    games, players, n_iter, lam, lam_d, seed = args
+    rng = np.random.default_rng(seed)
+    n_games = len(games)
+    n_players = len(players)
+
+    skill_samples = np.zeros((n_iter, n_players))
+    rank_samples  = np.zeros((n_iter, n_players), dtype=int)
+
+    for b in range(n_iter):
+        game_indices = rng.integers(0, n_games, size=n_games)
+        sample = [rec for gi in game_indices for rec in games[gi]]
+
+        present_global = sorted({pi for rec in sample for pi in rec["eligible"]})
+        if len(present_global) < 2:
+            rank_samples[b] = n_players
+            continue
+
+        global_to_local = {gi: li for li, gi in enumerate(present_global)}
+        local_records = []
+        for rec in sample:
+            dead = rec.get("dead", False)
+            local_elig = [global_to_local[gi] for gi in rec["eligible"]
+                          if gi in global_to_local]
+            if not local_elig:
+                continue
+            if dead:
+                local_records.append({
+                    "tossup_slug": rec["tossup_slug"],
+                    "eligible": local_elig,
+                    "dead": True,
+                })
+            else:
+                w_global = rec["winner_idx"]
+                if w_global not in global_to_local:
+                    continue
+                local_winner = global_to_local[w_global]
+                if local_winner not in local_elig:
+                    continue
+                local_records.append({
+                    "tossup_slug": rec["tossup_slug"],
+                    "eligible": local_elig,
+                    "winner_idx": local_winner,
+                    "dead": False,
+                })
+
+        if not local_records:
+            rank_samples[b] = n_players
+            continue
+
+        present_players = [players[gi] for gi in present_global]
+        local_skills, _, _ = fit_plackett_luce_with_difficulty(
+            local_records, present_players, lam=lam, lam_d=lam_d
+        )
+
+        full_skills = np.zeros(n_players)
+        for li, gi in enumerate(present_global):
+            full_skills[gi] = local_skills[li]
+        skill_samples[b] = full_skills
+        rank_samples[b] = scipy.stats.rankdata(-full_skills, method="min")
+
+    return skill_samples, rank_samples
+
+
+def bootstrap_plackett_luce_with_difficulty(
+    records: list[dict],
+    players: list[str],
+    n_bootstrap: int = 200,
+    lam: float = 0.1,
+    lam_d: float = 0.1,
+    seed: int = 42,
+    rank_thresholds: tuple[int, ...] = (5, 10, 20),
+    verbose: bool = True,
+) -> pd.DataFrame:
+    """
+    Game-level cluster bootstrap for the difficulty model.
+    Resamples whole games, refits both skill and difficulty parameters, reports skill CIs only.
+    """
+    game_buckets: dict[str, list[dict]] = defaultdict(list)
+    for rec in records:
+        game_buckets[rec["game_id"]].append(rec)
+    games = list(game_buckets.values())
+
+    n_workers = multiprocessing.cpu_count()
+    base, remainder = divmod(n_bootstrap, n_workers)
+    chunk_sizes = [base + (1 if i < remainder else 0) for i in range(n_workers)]
+    worker_args = [
+        (games, players, chunk_sizes[i], lam, lam_d, seed + i * 100_000)
+        for i in range(n_workers)
+    ]
+
+    if verbose:
+        print(f"  Cluster bootstrap (difficulty model): {len(games)} games, "
+              f"{n_bootstrap} iterations across {n_workers} cores...", flush=True)
+
+    with multiprocessing.Pool(n_workers) as pool:
+        results = pool.map(_bootstrap_chunk_with_difficulty, worker_args)
 
     skill_samples = np.vstack([r[0] for r in results])
     rank_samples  = np.vstack([r[1] for r in results])
@@ -272,14 +484,22 @@ def load_data(path: str, aggregate: bool = True) -> pd.DataFrame:
     return df
 
 
-def build_tossup_records(df: pd.DataFrame) -> tuple[list[dict], list[str]]:
+def build_tossup_records(
+    df: pd.DataFrame,
+    include_dead: bool = True,
+) -> tuple[list[dict], list[str]]:
     """
     Returns (records, players) where:
-      records: list of {tossup_slug, game_id, category, winner_slug, winner_idx, eligible: [idx]}
+      records: list of {tossup_slug, game_id, category, winner_slug, winner_idx,
+                        eligible: [idx], dead: bool}
       players: ordered list of player slugs (index = player_idx)
 
     Neg handling: players who negged are removed from the eligible set rather than
     discarding the event. The winner faced the reduced field — PL handles variable set sizes.
+
+    Dead tossups (no correct buzz): included when include_dead=True.  These are valid
+    observations for the difficulty model — the tossup "won" the race.  A neg-then-dead
+    event is also included: the negger is excluded from eligible, and winner_idx is None.
     """
     players = sorted(df["player_slug"].unique())
     pidx = {p: i for i, p in enumerate(players)}
@@ -292,14 +512,7 @@ def build_tossup_records(df: pd.DataFrame) -> tuple[list[dict], list[str]]:
     for _, grp in df.groupby(group_cols):
         category = grp["category"].iloc[0]
         game_id = grp["game_id"].iloc[0] if "game_id" in grp.columns else grp["tossup_slug"].iloc[0]
-
-        # Winner
-        winners = grp[grp["won"] == True]
-        if len(winners) == 0:
-            skipped_no_winner += 1
-            continue
-        winner_slug = winners.iloc[0]["player_slug"]
-        winner_idx = pidx[winner_slug]
+        tossup_slug = grp["tossup_slug"].iloc[0]
 
         # Remove negging players from the eligible set — they can't win after a neg.
         # The winner faced the remaining field; PL handles variable eligible-set sizes natively.
@@ -307,20 +520,46 @@ def build_tossup_records(df: pd.DataFrame) -> tuple[list[dict], list[str]]:
         eligible_slugs = [p for p in grp["player_slug"].unique() if p not in neg_slugs]
         eligible_idxs = [pidx[p] for p in eligible_slugs]
 
-        if len(eligible_idxs) <= 1:
-            skipped_trivial += 1
-            continue
+        winners = grp[grp["won"] == True]
+        if len(winners) == 0:
+            # Dead tossup: no correct buzz in this game
+            if not include_dead:
+                skipped_no_winner += 1
+                continue
+            if len(eligible_idxs) == 0:
+                # Everyone negated — no meaningful observation
+                skipped_trivial += 1
+                continue
+            records.append({
+                "tossup_slug": tossup_slug,
+                "game_id": game_id,
+                "category": category,
+                "winner_slug": None,
+                "winner_idx": None,
+                "eligible": eligible_idxs,
+                "dead": True,
+            })
+        else:
+            winner_slug = winners.iloc[0]["player_slug"]
+            winner_idx = pidx[winner_slug]
 
-        records.append({
-            "tossup_slug": grp["tossup_slug"].iloc[0],
-            "game_id": game_id,
-            "category": category,
-            "winner_slug": winner_slug,
-            "winner_idx": winner_idx,
-            "eligible": eligible_idxs,
-        })
+            if len(eligible_idxs) <= 1:
+                skipped_trivial += 1
+                continue
 
-    print(f"Usable tossups: {len(records)}  "
+            records.append({
+                "tossup_slug": tossup_slug,
+                "game_id": game_id,
+                "category": category,
+                "winner_slug": winner_slug,
+                "winner_idx": winner_idx,
+                "eligible": eligible_idxs,
+                "dead": False,
+            })
+
+    n_won  = sum(not r["dead"] for r in records)
+    n_dead = sum(r["dead"] for r in records)
+    print(f"Usable tossup events: {len(records)} ({n_won} won, {n_dead} dead)  "
           f"(skipped {skipped_no_winner} no-winner, {skipped_trivial} trivial)")
     return records, players
 
@@ -341,19 +580,155 @@ def player_stats(df: pd.DataFrame, players: list[str]) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
+# Cross-validation for lam_d selection
+# ---------------------------------------------------------------------------
+
+LAM_D_GRID = (0.01, 0.05, 0.1, 0.5, 1.0, 5.0)
+
+
+def cross_validate_lam_d(
+    records: list[dict],
+    players: list[str],
+    lam: float = 0.1,
+    lam_d_grid: tuple[float, ...] = LAM_D_GRID,
+    k: int = 5,
+    seed: int = 42,
+) -> float:
+    """
+    K-fold cross-validation (game-level splits) to select lam_d.
+
+    Trains on k-1 folds of games, evaluates held-out per-event log-likelihood on the
+    remaining fold.  Tossups unseen during training are assigned difficulty 0 (L2 prior
+    mean); players unseen during training are assigned skill 0.
+
+    Returns the lam_d value with the highest mean held-out log-likelihood.
+    """
+    game_buckets: dict[str, list[dict]] = defaultdict(list)
+    for rec in records:
+        game_buckets[rec["game_id"]].append(rec)
+    game_ids = np.array(list(game_buckets.keys()))
+
+    rng = np.random.default_rng(seed)
+    rng.shuffle(game_ids)
+    folds = np.array_split(game_ids, k)
+
+    scores: dict[float, list[float]] = {ld: [] for ld in lam_d_grid}
+
+    for fold_idx in range(k):
+        val_set   = set(folds[fold_idx])
+        train_set = set(game_ids) - val_set
+
+        train_records = [r for r in records if r["game_id"] in train_set]
+        val_records   = [r for r in records if r["game_id"] in val_set]
+        if not train_records or not val_records:
+            continue
+
+        for lam_d in lam_d_grid:
+            skills, tossup_slugs, difficulties = fit_plackett_luce_with_difficulty(
+                train_records, players, lam=lam, lam_d=lam_d
+            )
+            diff_map = dict(zip(tossup_slugs, difficulties))
+
+            ll = 0.0
+            n_eval = 0
+            for rec in val_records:
+                elig = rec["eligible"]
+                if not elig:
+                    continue
+                d_t = diff_map.get(rec["tossup_slug"], 0.0)
+                vals = np.empty(1 + len(elig))
+                vals[0] = d_t
+                vals[1:] = skills[np.array(elig)]
+                max_v = np.max(vals)
+                lse = max_v + np.log(np.sum(np.exp(vals - max_v)))
+                ll += (d_t if rec.get("dead", False) else skills[rec["winner_idx"]]) - lse
+                n_eval += 1
+
+            if n_eval:
+                scores[lam_d].append(ll / n_eval)
+
+    mean_scores = {ld: float(np.mean(v)) for ld, v in scores.items() if v}
+    best = max(mean_scores, key=mean_scores.__getitem__)
+
+    print("  CV held-out log-likelihood per event:")
+    for ld in lam_d_grid:
+        mark = " <-- best" if ld == best else ""
+        print(f"    lam_d={ld:<6}: {mean_scores.get(ld, float('nan')):.4f}{mark}")
+
+    return best
+
+
+# ---------------------------------------------------------------------------
+# Difficulty table helpers
+# ---------------------------------------------------------------------------
+
+def build_difficulty_table(
+    records: list[dict],
+    tossup_slugs: list[str],
+    difficulties: np.ndarray,
+) -> pd.DataFrame:
+    """Build a per-tossup difficulty summary from a fitted difficulty model."""
+    slug_to_idx = {sl: i for i, sl in enumerate(tossup_slugs)}
+    times_heard: dict[str, int] = defaultdict(int)
+    dead_count:  dict[str, int] = defaultdict(int)
+    category:    dict[str, str] = {}
+
+    for rec in records:
+        sl = rec["tossup_slug"]
+        times_heard[sl] += 1
+        if rec.get("dead", False):
+            dead_count[sl] += 1
+        if sl not in category:
+            category[sl] = rec.get("category", "")
+
+    rows = []
+    for sl in tossup_slugs:
+        th = times_heard[sl]
+        rows.append({
+            "tossup_slug": sl,
+            "category": category.get(sl, ""),
+            "difficulty": difficulties[slug_to_idx[sl]],
+            "times_heard": th,
+            "dead_rate": dead_count[sl] / th if th > 0 else 0.0,
+        })
+
+    return (
+        pd.DataFrame(rows)
+        .sort_values("difficulty", ascending=False)
+        .reset_index(drop=True)
+    )
+
+
+# ---------------------------------------------------------------------------
 # Overall model
 # ---------------------------------------------------------------------------
 
 def run_overall_model(
     df: pd.DataFrame,
     lam: float = 0.1,
+    lam_d: float = 0.1,
     n_bootstrap: int = 200,
-) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Returns (result, boot) where result is the point-estimate ranking and
-    boot is the bootstrap summary (ci_low, ci_high, p_top5, p_top10, p_top20)."""
-    print("\n=== Overall Plackett-Luce Model ===")
-    records, players = build_tossup_records(df)
-    skills = fit_plackett_luce(records, players, lam=lam)
+    use_difficulty: bool = True,
+) -> tuple[pd.DataFrame, pd.DataFrame | None, pd.DataFrame | None]:
+    """
+    Returns (result, boot, difficulty_table).
+
+    result            — point-estimate player ranking (1-indexed)
+    boot              — bootstrap summary (ci_low, ci_high, p_top5/10/20), or None
+    difficulty_table  — per-tossup difficulty estimates, or None when use_difficulty=False
+    """
+    model_label = "difficulty" if use_difficulty else "no-difficulty (fallback)"
+    print(f"\n=== Overall Plackett-Luce Model [{model_label}] ===")
+    records, players = build_tossup_records(df, include_dead=use_difficulty)
+
+    if use_difficulty:
+        skills, tossup_slugs, difficulties = fit_plackett_luce_with_difficulty(
+            records, players, lam=lam, lam_d=lam_d
+        )
+        diff_table = build_difficulty_table(records, tossup_slugs, difficulties)
+    else:
+        skills = fit_plackett_luce(records, players, lam=lam)
+        diff_table = None
 
     stats = player_stats(df, players)
     result = stats.copy()
@@ -367,11 +742,17 @@ def run_overall_model(
     if n_bootstrap > 0:
         print(f"\nBootstrapping overall model ({n_bootstrap} iterations)...")
         t0 = time.perf_counter()
-        boot = bootstrap_plackett_luce(records, players, n_bootstrap=n_bootstrap, lam=lam)
+        if use_difficulty:
+            boot = bootstrap_plackett_luce_with_difficulty(
+                records, players, n_bootstrap=n_bootstrap, lam=lam, lam_d=lam_d
+            )
+        else:
+            boot = bootstrap_plackett_luce(records, players, n_bootstrap=n_bootstrap, lam=lam)
         print(f"  Overall bootstrap done in {time.perf_counter() - t0:.1f}s")
     else:
         boot = None
-    return result, boot
+
+    return result, boot, diff_table
 
 
 # ---------------------------------------------------------------------------
@@ -381,7 +762,9 @@ def run_overall_model(
 def run_category_models(
     df: pd.DataFrame,
     lam: float = 0.1,
+    lam_d: float = 0.1,
     n_bootstrap: int = 200,
+    use_difficulty: bool = True,
 ) -> tuple[pd.DataFrame, dict[str, pd.DataFrame]]:
     """
     Returns (skill_matrix, cat_boots) where:
@@ -389,7 +772,8 @@ def run_category_models(
       cat_boots     — {category: bootstrap DataFrame with ci_low/ci_high/p_top3/p_top5}
                       only rows for players who qualified in the point estimate
     """
-    print(f"\n=== Per-Category Plackett-Luce Models ===")
+    model_label = "difficulty" if use_difficulty else "no-difficulty (fallback)"
+    print(f"\n=== Per-Category Plackett-Luce Models [{model_label}] ===")
     categories = sorted(df["category"].unique())
     print(f"Categories: {categories}")
 
@@ -407,15 +791,20 @@ def run_category_models(
     for cat in categories:
         threshold = MIN_BUZZES.get(cat, 5)
         cat_df = df[df["category"] == cat]
-        records, cat_players = build_tossup_records(cat_df)
+        records, cat_players = build_tossup_records(cat_df, include_dead=use_difficulty)
 
         if len(records) < 5:
             print(f"  {cat}: too few tossups ({len(records)}), skipping")
             continue
 
-        skills = fit_plackett_luce(records, cat_players, lam=lam)
+        if use_difficulty:
+            skills_arr, _, _ = fit_plackett_luce_with_difficulty(
+                records, cat_players, lam=lam, lam_d=lam_d
+            )
+        else:
+            skills_arr = fit_plackett_luce(records, cat_players, lam=lam)
 
-        for ps, sk in zip(cat_players, skills):
+        for ps, sk in zip(cat_players, skills_arr):
             n_gets = gets_by_cat.get((ps, cat), 0)
             if n_gets >= threshold:
                 data[cat][ps] = float(sk)
@@ -425,10 +814,16 @@ def run_category_models(
 
         if n_bootstrap > 0 and len(records) >= 5:
             t0 = time.perf_counter()
-            boot = bootstrap_plackett_luce(
-                records, cat_players, n_bootstrap=n_bootstrap, lam=lam,
-                rank_thresholds=(3, 5), verbose=False,
-            )
+            if use_difficulty:
+                boot = bootstrap_plackett_luce_with_difficulty(
+                    records, cat_players, n_bootstrap=n_bootstrap, lam=lam, lam_d=lam_d,
+                    rank_thresholds=(3, 5), verbose=False,
+                )
+            else:
+                boot = bootstrap_plackett_luce(
+                    records, cat_players, n_bootstrap=n_bootstrap, lam=lam,
+                    rank_thresholds=(3, 5), verbose=False,
+                )
             elapsed = time.perf_counter() - t0
             cat_boots[cat] = boot.loc[[p for p in qualified if p in boot.index]]
             print(f"    bootstrap done in {elapsed:.1f}s")
@@ -574,12 +969,16 @@ REPORT_TOP_N_DEFAULT = 10
 REPORT_TOP_OVERALL = 30
 
 
+REPORT_TOP_DIFFICULTY = 40
+
+
 def generate_report(
     overall_result: pd.DataFrame,
     skill_matrix: pd.DataFrame,
     boot: pd.DataFrame | None = None,
     cat_boots: dict[str, pd.DataFrame] | None = None,
     output_dir: str = ".",
+    difficulty_table: pd.DataFrame | None = None,
 ):
     """Write results/report.md with overall and per-category rankings."""
     lines = ["# Plackett-Luce Rankings Report\n"]
@@ -634,6 +1033,19 @@ def generate_report(
             row_str += f" | {ov:.3f} |"
             lines.append(row_str)
 
+    # Tossup difficulty table
+    if difficulty_table is not None and not difficulty_table.empty:
+        n_d = min(REPORT_TOP_DIFFICULTY, len(difficulty_table))
+        lines.append(f"\n## Tossup Difficulty Estimates (Top {n_d} Hardest)\n")
+        lines.append("| Rank | Tossup | Category | Difficulty | Times Heard | Dead Rate |")
+        lines.append("|------|--------|----------|----------:|------------:|----------:|")
+        for i, row in difficulty_table.head(n_d).iterrows():
+            lines.append(
+                f"| {i + 1} | {row['tossup_slug']} | {row['category']}"
+                f" | {row['difficulty']:.3f} | {row['times_heard']}"
+                f" | {row['dead_rate']:.1%} |"
+            )
+
     report_path = f"{output_dir}/report.md"
     with open(report_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
@@ -647,32 +1059,59 @@ def generate_report(
 def main():
     parser = argparse.ArgumentParser(description="Fit Plackett-Luce model on buzzpoints data")
     parser.add_argument("--input", default="buzzpoints_data.csv", help="CSV from scraper.py")
-    parser.add_argument("--lam", type=float, default=0.1, help="L2 regularization lambda")
+    parser.add_argument("--lam", type=float, default=0.1, help="L2 regularization lambda for player skill")
+    parser.add_argument("--lam-d", type=float, default=None,
+                        help="L2 lambda for tossup difficulty (default: chosen by 5-fold CV)")
     parser.add_argument("--bootstrap", type=int, default=200, help="Number of bootstrap iterations (0 to skip)")
     parser.add_argument("--output-dir", default=".", help="Directory for output files")
     parser.add_argument("--aggregate-categories", action="store_true",
                         help="Aggregate subcategories (e.g. Science - Biology -> Science)")
     parser.add_argument("--no-aggregate", dest="aggregate_categories", action="store_false")
     parser.set_defaults(aggregate_categories=True)
+    parser.add_argument("--no-difficulty", action="store_true",
+                        help="Fall back to the original model without tossup difficulty parameters")
     args = parser.parse_args()
 
     import os
     os.makedirs(args.output_dir, exist_ok=True)
 
+    use_difficulty = not args.no_difficulty
+
     # Load
     df = load_data(args.input, aggregate=args.aggregate_categories)
 
+    # Select lam_d via CV (skipped when --no-difficulty or --lam-d is explicit)
+    lam_d = args.lam_d
+    if use_difficulty and lam_d is None:
+        print("\n=== Selecting lam_d via 5-fold cross-validation ===")
+        records_for_cv, players_for_cv = build_tossup_records(df, include_dead=True)
+        t0 = time.perf_counter()
+        lam_d = cross_validate_lam_d(records_for_cv, players_for_cv, lam=args.lam)
+        print(f"  Selected lam_d={lam_d} in {time.perf_counter() - t0:.1f}s")
+    elif not use_difficulty:
+        lam_d = 0.1  # unused but keep a valid float for the call signatures
+
     # Overall model + bootstrap
-    overall_result, boot = run_overall_model(df, lam=args.lam, n_bootstrap=args.bootstrap)
+    overall_result, boot, diff_table = run_overall_model(
+        df, lam=args.lam, lam_d=lam_d, n_bootstrap=args.bootstrap,
+        use_difficulty=use_difficulty,
+    )
     overall_out = f"{args.output_dir}/overall_rankings.csv"
     overall_result.to_csv(overall_out)
     print(f"\nSaved overall rankings to {overall_out}")
     if boot is not None:
         boot.to_csv(f"{args.output_dir}/bootstrap_overall.csv")
         print(f"Saved bootstrap summary to {args.output_dir}/bootstrap_overall.csv")
+    if diff_table is not None:
+        diff_out = f"{args.output_dir}/tossup_difficulty.csv"
+        diff_table.to_csv(diff_out, index=False)
+        print(f"Saved tossup difficulty table to {diff_out}")
 
     # Category models + bootstrap
-    skill_matrix, cat_boots = run_category_models(df, lam=args.lam, n_bootstrap=args.bootstrap)
+    skill_matrix, cat_boots = run_category_models(
+        df, lam=args.lam, lam_d=lam_d, n_bootstrap=args.bootstrap,
+        use_difficulty=use_difficulty,
+    )
     matrix_out = f"{args.output_dir}/category_skills.csv"
     skill_matrix.to_csv(matrix_out)
     print(f"Saved category skill matrix to {matrix_out}")
@@ -686,13 +1125,21 @@ def main():
     if args.aggregate_categories:
         report_overall, report_matrix = overall_result, skill_matrix
         report_boot, report_cat_boots = boot, cat_boots
+        report_diff = diff_table
     else:
         print("\nBuilding aggregated data for report...")
         df_agg = load_data(args.input, aggregate=True)
-        report_overall, report_boot = run_overall_model(df_agg, lam=args.lam, n_bootstrap=args.bootstrap)
-        report_matrix, report_cat_boots = run_category_models(df_agg, lam=args.lam, n_bootstrap=args.bootstrap)
+        report_overall, report_boot, report_diff = run_overall_model(
+            df_agg, lam=args.lam, lam_d=lam_d, n_bootstrap=args.bootstrap,
+            use_difficulty=use_difficulty,
+        )
+        report_matrix, report_cat_boots = run_category_models(
+            df_agg, lam=args.lam, lam_d=lam_d, n_bootstrap=args.bootstrap,
+            use_difficulty=use_difficulty,
+        )
     generate_report(report_overall, report_matrix, boot=report_boot,
-                    cat_boots=report_cat_boots, output_dir=args.output_dir)
+                    cat_boots=report_cat_boots, output_dir=args.output_dir,
+                    difficulty_table=report_diff)
 
     print("\nDone.")
 
