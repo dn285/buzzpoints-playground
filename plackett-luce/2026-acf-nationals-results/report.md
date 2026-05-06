@@ -75,27 +75,27 @@ The current model uses only the outcome of each tossup (who won, or whether it w
 
 **Q: Who are the best players?**
 
-A: [These players.](2026-acf-nationals-results\player-rankings.md)
+A: [These players.](player-rankings.md)
 
 Performed the analysis above and ranked players by their skill parameters (both overall and per-category). Note that skill parameters should not be compared across tournaments or subjects, as only the relative difference between players within a given ranking is meaningful. The value of the parameter itself is also somewhat arbitrary, as the model just centers it at the mean (this is why many top players in the subject rankings have "negative" overall skill).
 
 **Q: Which tossups are the hardest?**
 
-A: [These tossups.](2026-acf-nationals-results\hardest-tossups.md)
+A: [These tossups.](hardest-tossups.md)
 
 Sorted the tossups using the difficulty estimates. The difficulty parameters double as a question-quality signal. Tossups that went dead in most rooms get high `d_t`; tossups that were quickly converted get low `d_t`. This is a useful sanity check (genuinely hard tossups should rank near the top) and a standalone output in its own right.
 
 **Q: Which categories are the most specialized?**
 
 A: Science and nothing else comes close.
-![](2026-acf-nationals-results\residual_variance.png)
+![](residual_variance.png)
 
 For each category, compute the variance of (category skill - overall skill) across players. Higher variance indicates a more specialist-driven category.
 
 **Q: Is there any correlation or trade-off between categories?**
 
 A: Probably, but this would be better-determined from a larger dataset. 
-![](2026-acf-nationals-results\category_correlation.png)
+![](category_correlation.png)
 
 Computed pairwise Pearson correlations between category skill vectors across players. This reveals which categories tend to co-occur in players (positive correlation) and which trade off (negative correlation). 
 
