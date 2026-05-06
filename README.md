@@ -1,6 +1,6 @@
-# [name tbd]
+# Statistical Analysis of 2026 ACF Nationals Performance
 
-[name tbd] is a statistical method used to rank quizbowlers based on per-question performance. It is based on the Plackett-Luce model, an extension of the Bradley-Terry model, which itself generalizes the Elo system.
+I ranked quizbowlers based on per-question performance at 2026 ACF Nationals. My analysis is based on the Plackett-Luce model, an extension of the Bradley-Terry model, which itself generalizes the Elo system. Unlike other analyses, this does not factor in buzzpoint data whatsoever -- only who got which tossup and in which room. Despite this, I was able to produce rankings I believe are exceedingly sensible. In cases where players deviated significantly, manual inspection of their buzzpoints and comparison against players ranked above and below them did not reveal any discrepancies based on the 2026 ACF Nationals data. 
 
 ## Overview
 For each tossup, in each game, a player is the "winner" if they buzzed correctly first. Every other player in the room is a "loser" for that tossup. The model uses these per-tossup outcomes to estimate a single skill parameter for each player.
@@ -21,10 +21,10 @@ L = sum_t [ s_{w_t} - log( sum_{k in S_t} exp(s_k) ) ]
 where `w_t` is the winner of tossup `t`. We maximize this with L-BFGS-B (`scipy.optimize.minimize`) and an L2 penalty on `s` to keep the problem well-posed (the model is identified only up to an additive constant — we then center the skills at zero post-fit). The penalty strength is `lambda = 0.1`. Players with very few observations are pulled toward the prior mean of zero, which is the desired behavior.
 
 ## Handling negs
-A naive implementation drops any tossup with a neg, on the grounds that the model has no explicit way to penalize incorrect buzzes. That throws away a lot of data — most rebound conversions follow a neg. Instead, we drop only the negging player from the eligible set for that tossup; the rebound winner faced a smaller field, and Plackett-Luce handles variable set sizes natively. This keeps rebound wins as valid observations while still preventing the negger from getting credit they don't deserve.
+A naive implementation drops any tossup with a neg, on the grounds that the model has no explicit way to penalize incorrect buzzes. I did this initially, but it threw away a lot of data, many of which were on tossups with hard-to-convert answerlines, which are a powerful differentiator among top players. Instead, I dropped only the negging player from the eligible set for that tossup, meaning the rebound winner faced a smaller field, which Plackett-Luce handles natively. 
 
 ## Question difficulty
-The original model also dropped dead tossups, since there is no winner to credit. But a dead tossup is informative — it tells us the question was hard relative to the room. Throwing those events away means systematically underestimating the skill of players in tough fields and ignoring the strongest signal we have about which questions are difficult.
+The original model also dropped dead tossups, since there is no winner to credit. However, throwing those events away means systematically underestimating the skill of players in tough fields and ignoring the strongest signal we have about which questions are difficult.
 
 We extend the model with a per-tossup difficulty parameter `d_t`. Each unique tossup gets one `d_t` shared across every game it was read in (the question's difficulty doesn't change between rooms). Conceptually, the tossup itself is a "virtual competitor" in the race:
 
@@ -38,17 +38,30 @@ Higher `d_t` means a harder question. The log-likelihood adds one term per event
 - For events with a winner: `s_{w_t} - log( exp(d_t) + sum_{k in S_t} exp(s_k) )`
 - For dead events:         `d_t      - log( exp(d_t) + sum_{k in S_t} exp(s_k) )`
 
-Skill and difficulty parameters are concatenated and fit jointly. Difficulty gets its own L2 regularization with strength `lambda_d` (separate from the skill `lambda`). Post-fit, we center the player skills at zero; the difficulties end up on the same scale.
+Skill and difficulty parameters are concatenated and fit jointly. Difficulty gets its own L2 regularization with strength `lambda_d` (separate from the skill `lambda`). Post-fit, we center the player skills at zero and the difficulties end up on the same scale.
 
-This change uses every game-tossup event as data — including dead-after-neg events, where the negger is excluded but the question still goes dead — instead of silently throwing away ~30% of the dataset.
+This change allows us to use every game-tossup event as data -- including dead-after-neg events, where the negging player is excluded but the question still goes dead -- instead of silently throwing away ~30% of the dataset.
 
 ## Choosing lambda_d
-The right value of `lambda_d` is not obvious — too low and we overfit difficulty estimates from low-frequency tossups, too high and we approximate the no-difficulty model. We pick it with 5-fold cross-validation, splitting at the game level (so within-game dependence doesn't leak between train and validation), maximizing held-out per-event log-likelihood. The skill `lambda` is left at 0.1; in principle the same procedure could choose it, but the rankings are not very sensitive to it within the reasonable range.
+The right value of `lambda_d` is not obvious. Excessively low values would overfit difficulty estimates from low-frequency tossups, while excessively high values would reduce to the no-difficulty model. I used 5-fold cross-validation, splitting at the game level (so within-game dependence doesn't leak between train and validation). The skill `lambda` is left at 0.1; in principle the same procedure could choose it, but the rankings are not very sensitive to it within the reasonable range.
+
+When this was performed, the CV scores were:
+
+```
+lam_d=0.01 : -1.9089
+lam_d=0.05 : -1.9058
+lam_d=0.1  : -1.9043
+lam_d=0.5  : -1.9022  <-- best
+lam_d=1.0  : -1.9085
+lam_d=5.0  : -1.9397
+```
+
+As such, `lam_d=0.5` was selected. It is worth noting that the curve is fairly flat between 0.05 and 1.0 (about 0.007 nats of difference per event). This is reassuring, as it indicates the rankings don't hinge on a regularization choice. The drop-off at `lam_d=5.0` confirms that strong shrinkage starts to wash out the difficulty signal.
 
 ## Confidence intervals
-A point estimate is not enough — we want to know whether the gap between two players is real or could plausibly reverse on a different sample of games. We use a cluster bootstrap, resampling whole games (not individual tossups) with replacement and refitting the joint skill+difficulty model on each resample. Resampling at the game level rather than the tossup level respects the fact that tossups within a game share players, a moderator, and a pace, so they are not independent observations. Event-level resampling would produce artificially narrow intervals.
+A point estimate is not sufficient, we want to know whether the gap between two players is real or could plausibly reverse on a different sample of games. I used a cluster bootstrap, resampling whole games with replacement and refitting the joint skill+difficulty model on each resample. I resampled at the game level, rather than the tossup level, because tossups within a game are not independent. Similarly, event-level resampling would produce artificially narrow intervals.
 
-For each player we report the 2.5th–97.5th percentile of skill across resamples, plus the empirical probability of finishing in the top 5 / 10 / 20. The bootstrap refits both skill and difficulty parameters but only reports CIs for skills (the difficulty CIs aren't part of the analysis output). Resampling is parallelized across CPU cores.
+For each player we report the 2.5th–97.5th percentile of skill across resamples, plus the empirical probability of finishing in the top 5 / 10 / 20. The bootstrap refits both skill and difficulty parameters but only reports CIs for skills (the difficulty CIs aren't part of the analysis output). 
 
 ## Per-category models
 For each of the seven aggregated categories (Fine Arts, History, Literature, Science, Beliefs, Thought, Other), we fit the same skill+difficulty model on just that category's tossups. Each player ends up with one overall skill estimate and up to seven per-category estimates.
@@ -61,21 +74,30 @@ The current model uses only the outcome of each tossup (who won, or whether it w
 ## According to this model…
 
 **Q: Who are the best players?**
-A: These people:
+
+A: [These players.](2026-acf-nationals-results\report.md)
 
 Performed the analysis above and ranked players by their skill parameters (both overall and per-category). Note that skill parameters should not be compared across tournaments or subjects, as only the relative difference between players within a given ranking is meaningful. The value of the parameter itself is also somewhat arbitrary, as the model just centers it at the mean (this is why many top players in the subject rankings have "negative" overall skill).
 
+**Q: Which tossups are the hardest?**
+
+A: The ones with the highest difficulty estimates.
+
+The difficulty parameters double as a question-quality signal. Tossups that went dead in most rooms get high `d_t`; tossups that were quickly converted get low `d_t`. This is a useful sanity check (genuinely hard tossups should rank near the top) and a standalone output in its own right.
+
 **Q: Which categories are the most specialized?**
+
 A: Science and nothing else comes close.
+![](2026-acf-nationals-results\residual_variance.png)
 
 For each category, compute the variance of (category skill - overall skill) across players. Higher variance indicates a more specialist-driven category.
 
 **Q: Is there any correlation or trade-off between categories?**
-A: Probably.
 
-Computed pairwise Pearson correlations between category skill vectors across players. This reveals which categories tend to co-occur in players (positive correlation) and which trade off (negative correlation). It is worth noting that this analysis is more accurate than PCA, which in this case is functionally just an approximation of the cross-category correlation matrix.
+A: Probably, but this would be better-determined from a larger dataset. 
+![](2026-acf-nationals-results\category_correlation.png)
 
-**Q: Which tossups are the hardest?**
-A: The ones with the highest difficulty estimates.
+Computed pairwise Pearson correlations between category skill vectors across players. This reveals which categories tend to co-occur in players (positive correlation) and which trade off (negative correlation). 
 
-The difficulty parameters double as a question-quality signal. Tossups that went dead in most rooms get high `d_t`; tossups that were quickly converted get low `d_t`. This is a useful sanity check (genuinely hard tossups should rank near the top) and a standalone output in its own right.
+It is worth noting that this analysis is more accurate than PCA, which would have functionally just an approximation of the cross-category correlation matrix.
+
