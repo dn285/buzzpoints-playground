@@ -1,6 +1,6 @@
-# Statistical Analysis of 2026 ACF Nationals Performance
+# 2026 ACF Nationals Report
 
-I ranked quizbowlers based on per-question performance at 2026 ACF Nationals. My analysis is based on the Plackett-Luce model, an extension of the Bradley-Terry model, which itself generalizes the Elo system. Unlike other analyses, this does not factor in buzzpoint data whatsoever -- only who got which tossup and in which room.
+I ranked quizbowlers based on per-question performance at 2026 ACF Nationals. My analysis is based on the Plackett-Luce model, an extension of the Bradley-Terry model, which itself generalizes the Elo system. Of particular note is that, unlike other analyses, this does not factor in buzzpoint data whatsoever -- only who got which tossup and against which opponents.
 
 ## Overview
 For each tossup, in each game, a player is the "winner" if they buzzed correctly first. Every other player in the room is a "loser" for that tossup. The model uses these per-tossup outcomes to estimate a single skill parameter for each player.
@@ -103,10 +103,8 @@ It is worth noting that this analysis is more accurate than PCA, which would hav
 
 ## Thoughts
 
-If one were to only rank players based on 2026 ACF Nationals performance and if there were such a thing as an "objective" ranking, I believe it would be more or less the rankings produced by this method. While many player placements here were extremely surprising to me, my intuition was consistently proven "incorrect" when I actually inspected that player's buzzpoints and compared it against the other players ranked above and below them. 
+If one were to only rank players based on 2026 ACF Nationals performance and if there were such a thing as an "objective" ranking, I believe it would be more or less the rankings produced by this method. While many player placements here were initially extremely surprising to me, my intuition was consistently proven "incorrect" when I actually inspected that player's buzzpoints and compared it against the other players ranked above and below them. 
 
-I put "incorrect" in quotes because, of course, there are many other factors to consider. There was a whole season worth of other tournaments and two other nationals to consider. Additionally, it is impossible for any method to fairly or reasonable account for things like the shadow effect, boogeymen and biking. 
+I put "incorrect" in quotes because, of course, there are many other factors to consider. There was a whole season worth of other tournaments and two other nationals to consider. Additionally, it is impossible for any method to fairly or reasonable account for things like the shadow effect, boogeymen and biking. Again, I am not saying these rankings are somehow objectively correct, just that I believe they accurately reflect which players had the best buzzes at this tournament.
 
-Finally, on the topic of buzz positions, those were excluded intentionally. For pure ranking purposes, I was fairly confident that question outcome carries the large majority of the signal. This belief has been significantly reinforced by how the rankings produced by this buzzpoint-blind model. Again, I am not saying they are correct, but they seem to me to very accurately reflect who had the better collection of buzzes at this tournament. We could test this empirically by producing a position-aware model and comparing the resulting rankings to these, then comparing rank correlations. 
-
-However, I believe the far more interesting use for buzzpoints would be in answering a number of other questions, such as player profiling, question quality analysis and counterfactuals prediction. 👀😉
+Finally, on the topic of buzz positions, those were excluded intentionally. For pure ranking purposes, I was fairly confident that question outcome carries the large majority of the signal. This belief is significantly reinforced by inspection of the rankings produced by this buzzpoint-blind model. We could test this more rigorously by producing a position-aware model and comparing the resulting rankings to these, then comparing rank correlations. However, I believe the far more interesting use for buzzpoints would be in answering a number of other questions, such as player profiling, question quality analysis and counterfactuals prediction. 👀😉
