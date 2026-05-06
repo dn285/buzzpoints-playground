@@ -1,6 +1,6 @@
 # Statistical Analysis of 2026 ACF Nationals Performance
 
-I ranked quizbowlers based on per-question performance at 2026 ACF Nationals. My analysis is based on the Plackett-Luce model, an extension of the Bradley-Terry model, which itself generalizes the Elo system. Unlike other analyses, this does not factor in buzzpoint data whatsoever -- only who got which tossup and in which room. Despite this, I was able to produce rankings I believe are exceedingly sensible. In cases where players deviated significantly, manual inspection of their buzzpoints and comparison against players ranked above and below them did not reveal any discrepancies based on the 2026 ACF Nationals data. 
+I ranked quizbowlers based on per-question performance at 2026 ACF Nationals. My analysis is based on the Plackett-Luce model, an extension of the Bradley-Terry model, which itself generalizes the Elo system. Unlike other analyses, this does not factor in buzzpoint data whatsoever -- only who got which tossup and in which room.
 
 ## Overview
 For each tossup, in each game, a player is the "winner" if they buzzed correctly first. Every other player in the room is a "loser" for that tossup. The model uses these per-tossup outcomes to estimate a single skill parameter for each player.
