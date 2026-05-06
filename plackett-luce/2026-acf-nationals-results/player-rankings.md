@@ -1,5 +1,16 @@
 # Plackett-Luce Rankings Report
 
+## Table of Contents
+
+- [Overall](#overall-top-30)
+- [History](#history-top-15)
+- [Literature](#literature-top-15)
+- [Science](#science-top-15)
+- [Fine Arts](#fine-arts-top-10)
+- [Beliefs](#beliefs-top-10)
+- [Thought](#thought-top-10)
+- [Other](#other-top-10)
+
 ## Overall (Top 30)
 
 | Rank | Player | Team | Skill | 95% CI | P(Top 5) | P(Top 10) | P(Top 20) | Gets | Heard |
@@ -34,36 +45,6 @@
 | 28 | simon-zimmerman | ohio-state | 0.876 | [0.704, 1.069] | 0% | 0% | 3% | 78 | 337 |
 | 29 | claire-jones | chicago-a | 0.852 | [0.634, 1.158] | 0% | 0% | 8% | 53 | 359 |
 | 30 | jaskaran-singh | ucla | 0.827 | [0.636, 1.027] | 0% | 0% | 1% | 70 | 360 |
-
-## Beliefs (Top 10)
-
-| Rank | Player | Team | Category Skill | 95% CI | P(Top 3) | P(Top 5) | Overall Skill |
-|------|--------|------|---------------:|-------:|---------:|---------:|--------------:|
-| 1 | vivian-malouf | uc-berkeley-a | 2.849 | [2.106, 3.718] | 88% | 94% | 1.858 |
-| 2 | charles-hang | washu | 2.351 | [1.698, 3.433] | 38% | 58% | 1.217 |
-| 3 | jack-lewis | bruin | 2.182 | [1.345, 3.059] | 22% | 36% | 1.673 |
-| 4 | evan-gniadek | purdue | 2.075 | [1.352, 2.937] | 18% | 34% | 0.228 |
-| 5 | ben-wismath | toronto-b | 2.071 | [1.355, 2.957] | 17% | 30% | 0.226 |
-| 6 | john-marvin | chicago-a | 2.067 | [1.354, 2.932] | 14% | 27% | 0.642 |
-| 7 | matthew-wang | british-columbia | 1.955 | [1.137, 2.738] | 9% | 22% | 0.572 |
-| 8 | sinecio-morales | johns-hopkins | 1.948 | [0.644, 2.897] | 10% | 18% | 0.919 |
-| 9 | michal-gerasimiuk | stanford-a | 1.934 | [0.721, 3.066] | 14% | 22% | 1.281 |
-| 10 | brendan-bethlehem | cambridge | 1.830 | [1.018, 2.942] | 12% | 21% | 0.999 |
-
-## Fine Arts (Top 10)
-
-| Rank | Player | Team | Category Skill | 95% CI | P(Top 3) | P(Top 5) | Overall Skill |
-|------|--------|------|---------------:|-------:|---------:|---------:|--------------:|
-| 1 | justin-wytmar | nyu-a | 2.958 | [2.319, 3.714] | 79% | 89% | 0.819 |
-| 2 | joseph-chambers | virginia | 2.892 | [2.455, 3.515] | 81% | 92% | 1.380 |
-| 3 | jeffrey-xu | georgia-tech-b | 2.719 | [2.195, 3.444] | 58% | 84% | -0.063 |
-| 4 | ariel-faeder | pittsburgh | 2.440 | [1.838, 3.262] | 18% | 41% | 1.274 |
-| 5 | yrwin-batan | mit | 2.417 | [1.892, 3.181] | 18% | 36% | 1.441 |
-| 6 | jack-lewis | bruin | 2.403 | [1.989, 2.935] | 10% | 32% | 1.673 |
-| 7 | vivian-malouf | uc-berkeley-a | 2.316 | [1.666, 3.029] | 9% | 24% | 1.858 |
-| 8 | joel-miles | minnesota | 2.280 | [1.801, 2.847] | 6% | 22% | 1.323 |
-| 9 | alvin-guo | chicago-a | 2.181 | [1.493, 2.995] | 8% | 20% | 0.682 |
-| 10 | sinecio-morales | johns-hopkins | 2.167 | [1.586, 2.876] | 4% | 15% | 0.919 |
 
 ## History (Top 15)
 
@@ -105,21 +86,6 @@
 | 14 | raymond-chen | toronto-b | 2.187 | [1.704, 2.786] | 0% | 3% | 0.340 |
 | 15 | ryan-rosenberg | nyu-a | 2.107 | [1.415, 2.724] | 0% | 0% | 1.448 |
 
-## Other (Top 10)
-
-| Rank | Player | Team | Category Skill | 95% CI | P(Top 3) | P(Top 5) | Overall Skill |
-|------|--------|------|---------------:|-------:|---------:|---------:|--------------:|
-| 1 | michael-du | waterloo | 2.572 | [1.830, 3.708] | 48% | 69% | 0.786 |
-| 2 | robert-wang | columbia-a | 2.547 | [1.811, 3.597] | 51% | 68% | 1.068 |
-| 3 | christopher-sims | northwestern-a | 2.470 | [1.485, 3.723] | 44% | 61% | 1.080 |
-| 4 | jakob-myers | indiana | 2.275 | [1.265, 3.185] | 23% | 40% | 1.705 |
-| 5 | ryan-rosenberg | nyu-a | 2.206 | [1.158, 3.231] | 24% | 40% | 1.448 |
-| 6 | jacob-hardin-bernhardt | nyu-b | 2.153 | [1.678, 3.019] | 14% | 26% | 0.526 |
-| 7 | aiden-dartley | rutgers | 2.079 | [1.182, 3.182] | 18% | 28% | 0.611 |
-| 8 | simon-zimmerman | ohio-state | 2.076 | [1.297, 3.099] | 12% | 30% | 0.876 |
-| 9 | william-houston | chicago-b | 2.067 | [1.504, 3.110] | 13% | 21% | -0.086 |
-| 10 | brendan-bethlehem | cambridge | 1.999 | [1.376, 2.971] | 10% | 21% | 0.999 |
-
 ## Science (Top 15)
 
 | Rank | Player | Team | Category Skill | 95% CI | P(Top 3) | P(Top 5) | Overall Skill |
@@ -140,6 +106,36 @@
 | 14 | david-bass | johns-hopkins | 1.968 | [1.530, 2.527] | 0% | 0% | 0.195 |
 | 15 | sharath-narayan | northwestern-a | 1.881 | [1.034, 2.562] | 0% | 1% | 0.543 |
 
+## Fine Arts (Top 10)
+
+| Rank | Player | Team | Category Skill | 95% CI | P(Top 3) | P(Top 5) | Overall Skill |
+|------|--------|------|---------------:|-------:|---------:|---------:|--------------:|
+| 1 | justin-wytmar | nyu-a | 2.958 | [2.319, 3.714] | 79% | 89% | 0.819 |
+| 2 | joseph-chambers | virginia | 2.892 | [2.455, 3.515] | 81% | 92% | 1.380 |
+| 3 | jeffrey-xu | georgia-tech-b | 2.719 | [2.195, 3.444] | 58% | 84% | -0.063 |
+| 4 | ariel-faeder | pittsburgh | 2.440 | [1.838, 3.262] | 18% | 41% | 1.274 |
+| 5 | yrwin-batan | mit | 2.417 | [1.892, 3.181] | 18% | 36% | 1.441 |
+| 6 | jack-lewis | bruin | 2.403 | [1.989, 2.935] | 10% | 32% | 1.673 |
+| 7 | vivian-malouf | uc-berkeley-a | 2.316 | [1.666, 3.029] | 9% | 24% | 1.858 |
+| 8 | joel-miles | minnesota | 2.280 | [1.801, 2.847] | 6% | 22% | 1.323 |
+| 9 | alvin-guo | chicago-a | 2.181 | [1.493, 2.995] | 8% | 20% | 0.682 |
+| 10 | sinecio-morales | johns-hopkins | 2.167 | [1.586, 2.876] | 4% | 15% | 0.919 |
+
+## Beliefs (Top 10)
+
+| Rank | Player | Team | Category Skill | 95% CI | P(Top 3) | P(Top 5) | Overall Skill |
+|------|--------|------|---------------:|-------:|---------:|---------:|--------------:|
+| 1 | vivian-malouf | uc-berkeley-a | 2.849 | [2.106, 3.718] | 88% | 94% | 1.858 |
+| 2 | charles-hang | washu | 2.351 | [1.698, 3.433] | 38% | 58% | 1.217 |
+| 3 | jack-lewis | bruin | 2.182 | [1.345, 3.059] | 22% | 36% | 1.673 |
+| 4 | evan-gniadek | purdue | 2.075 | [1.352, 2.937] | 18% | 34% | 0.228 |
+| 5 | ben-wismath | toronto-b | 2.071 | [1.355, 2.957] | 17% | 30% | 0.226 |
+| 6 | john-marvin | chicago-a | 2.067 | [1.354, 2.932] | 14% | 27% | 0.642 |
+| 7 | matthew-wang | british-columbia | 1.955 | [1.137, 2.738] | 9% | 22% | 0.572 |
+| 8 | sinecio-morales | johns-hopkins | 1.948 | [0.644, 2.897] | 10% | 18% | 0.919 |
+| 9 | michal-gerasimiuk | stanford-a | 1.934 | [0.721, 3.066] | 14% | 22% | 1.281 |
+| 10 | brendan-bethlehem | cambridge | 1.830 | [1.018, 2.942] | 12% | 21% | 0.999 |
+
 ## Thought (Top 10)
 
 | Rank | Player | Team | Category Skill | 95% CI | P(Top 3) | P(Top 5) | Overall Skill |
@@ -154,3 +150,18 @@
 | 8 | ryan-rosenberg | nyu-a | 2.248 | [1.488, 3.206] | 6% | 18% | 1.448 |
 | 9 | jack-lewis | bruin | 2.239 | [1.648, 3.078] | 6% | 18% | 1.673 |
 | 10 | akshar-goyal | illinois-a | 2.187 | [1.423, 3.097] | 6% | 12% | 0.590 |
+
+## Other (Top 10)
+
+| Rank | Player | Team | Category Skill | 95% CI | P(Top 3) | P(Top 5) | Overall Skill |
+|------|--------|------|---------------:|-------:|---------:|---------:|--------------:|
+| 1 | michael-du | waterloo | 2.572 | [1.830, 3.708] | 48% | 69% | 0.786 |
+| 2 | robert-wang | columbia-a | 2.547 | [1.811, 3.597] | 51% | 68% | 1.068 |
+| 3 | christopher-sims | northwestern-a | 2.470 | [1.485, 3.723] | 44% | 61% | 1.080 |
+| 4 | jakob-myers | indiana | 2.275 | [1.265, 3.185] | 23% | 40% | 1.705 |
+| 5 | ryan-rosenberg | nyu-a | 2.206 | [1.158, 3.231] | 24% | 40% | 1.448 |
+| 6 | jacob-hardin-bernhardt | nyu-b | 2.153 | [1.678, 3.019] | 14% | 26% | 0.526 |
+| 7 | aiden-dartley | rutgers | 2.079 | [1.182, 3.182] | 18% | 28% | 0.611 |
+| 8 | simon-zimmerman | ohio-state | 2.076 | [1.297, 3.099] | 12% | 30% | 0.876 |
+| 9 | william-houston | chicago-b | 2.067 | [1.504, 3.110] | 13% | 21% | -0.086 |
+| 10 | brendan-bethlehem | cambridge | 1.999 | [1.376, 2.971] | 10% | 21% | 0.999 |
