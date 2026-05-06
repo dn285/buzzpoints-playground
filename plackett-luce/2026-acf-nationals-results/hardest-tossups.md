@@ -1,4 +1,4 @@
-## Tossup Difficulty Estimates (Top 40 Hardest)
+## 2026 ACF Nationals Top 40 Hardest Tossups
 
 | Rank | Tossup | Category | Difficulty | Times Heard | Dead Rate |
 |------|--------|----------|----------:|------------:|----------:|
