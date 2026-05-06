@@ -341,8 +341,8 @@ def save_csv(rows: list[dict], path: str):
 def main():
     parser = argparse.ArgumentParser(description="Scrape buzzpoints tossup data")
     parser.add_argument("--base-url", required=True, help="Base URL e.g. https://2026-nationals.vercel.app/set/2026-acf-nationals")
-    parser.add_argument("--output", default="buzzpoints_data.csv", help="Output CSV path")
-    parser.add_argument("--cache-dir", default=".cache", help="Directory to cache raw HTML")
+    parser.add_argument("--output", default="../buzzpoints_data.csv", help="Output CSV path")
+    parser.add_argument("--cache-dir", default="../.cache", help="Directory to cache raw HTML")
     parser.add_argument("--delay", type=float, default=DEFAULT_DELAY, help="Seconds between requests")
     args = parser.parse_args()
 

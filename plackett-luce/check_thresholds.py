@@ -1,7 +1,7 @@
 import pandas as pd
 
-mat = pd.read_csv(r'results\category_skills.csv', index_col=0)
-df = pd.read_csv(r'buzzpoints_data.csv')
+mat = pd.read_csv(r'2026-acf-nationals-results/category_skills.csv', index_col=0)
+df = pd.read_csv(r'../buzzpoints_data.csv')
 
 cat_map = {
     'Fine Arts': 'Fine Arts', 'Science': 'Science', 'History': 'History',

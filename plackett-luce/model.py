@@ -1058,7 +1058,7 @@ def generate_report(
 
 def main():
     parser = argparse.ArgumentParser(description="Fit Plackett-Luce model on buzzpoints data")
-    parser.add_argument("--input", default="buzzpoints_data.csv", help="CSV from scraper.py")
+    parser.add_argument("--input", default="../buzzpoints_data.csv", help="CSV from scraper.py")
     parser.add_argument("--lam", type=float, default=0.1, help="L2 regularization lambda for player skill")
     parser.add_argument("--lam-d", type=float, default=None,
                         help="L2 lambda for tossup difficulty (default: chosen by 5-fold CV)")
