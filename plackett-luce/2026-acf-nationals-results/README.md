@@ -101,3 +101,12 @@ Computed pairwise Pearson correlations between category skill vectors across pla
 
 It is worth noting that this analysis is more accurate than PCA, which would have functionally just an approximation of the cross-category correlation matrix.
 
+## Thoughts
+
+If one were to only rank players based on 2026 ACF Nationals performance and if there were such a thing as an "objective" ranking, I believe it would be more or less the rankings produced by this method. While many player placements here were extremely surprising to me, my intuition was consistently proven "incorrect" when I actually inspected that player's buzzpoints and compared it against the other players ranked above and below them. 
+
+I put "incorrect" in quotes because, of course, there are many other factors to consider. There was a whole season worth of other tournaments and two other nationals to consider. Additionally, it is impossible for any method to fairly or reasonable account for things like the shadow effect, boogeymen and biking. 
+
+Finally, on the topic of buzz positions, those were excluded intentionally. For pure ranking purposes, I was fairly confident that question outcome carries the large majority of the signal. This belief has been significantly reinforced by how the rankings produced by this buzzpoint-blind model. Again, I am not saying they are correct, but they seem to me to very accurately reflect who had the better collection of buzzes at this tournament. We could test this empirically by producing a position-aware model and comparing the resulting rankings to these, then comparing rank correlations. 
+
+However, I believe the far more interesting use for buzzpoints would be in answering a number of other questions, such as player profiling, question quality analysis and counterfactuals prediction. 👀😉
