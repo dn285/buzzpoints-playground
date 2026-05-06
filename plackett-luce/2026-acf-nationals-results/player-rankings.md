@@ -13,38 +13,38 @@
 
 ## Overall (Top 30)
 
-| Rank | Player | Team | Skill | 95% CI | P(Top 5) | P(Top 10) | P(Top 20) | Gets | Heard |
-|------|--------|------|------:|-------:|---------:|----------:|----------:|-----:|------:|
-| 1 | vivian-malouf | uc-berkeley-a | 1.858 | [1.612, 2.107] | 100% | 100% | 100% | 94 | 339 |
-| 2 | jakob-myers | indiana | 1.705 | [1.470, 1.965] | 98% | 100% | 100% | 109 | 340 |
-| 3 | jack-lewis | bruin | 1.673 | [1.530, 1.838] | 100% | 100% | 100% | 161 | 339 |
-| 4 | ryan-rosenberg | nyu-a | 1.448 | [1.246, 1.700] | 54% | 88% | 100% | 86 | 340 |
-| 5 | yrwin-batan | mit | 1.441 | [1.118, 1.782] | 44% | 80% | 98% | 109 | 340 |
-| 6 | joseph-chambers | virginia | 1.380 | [1.147, 1.611] | 29% | 75% | 100% | 115 | 337 |
-| 7 | noah-chin | virginia-tech | 1.357 | [1.179, 1.567] | 20% | 74% | 99% | 97 | 340 |
-| 8 | joel-miles | minnesota | 1.323 | [1.173, 1.487] | 6% | 66% | 100% | 117 | 346 |
-| 9 | andrew-zeng | stanford-a | 1.287 | [1.046, 1.505] | 4% | 49% | 96% | 78 | 360 |
-| 10 | michal-gerasimiuk | stanford-a | 1.281 | [1.008, 1.561] | 12% | 46% | 96% | 79 | 360 |
-| 11 | ariel-faeder | pittsburgh | 1.274 | [0.997, 1.515] | 6% | 44% | 94% | 108 | 337 |
-| 12 | andrew-wang | illinois-a | 1.247 | [0.948, 1.553] | 8% | 38% | 90% | 91 | 340 |
-| 13 | rohan-ganeshan | harvard | 1.239 | [0.950, 1.544] | 7% | 36% | 88% | 74 | 338 |
-| 14 | charles-hang | washu | 1.217 | [1.038, 1.384] | 0% | 18% | 94% | 91 | 338 |
-| 15 | eve-fleisig | uc-berkeley-a | 1.164 | [0.843, 1.535] | 4% | 21% | 74% | 48 | 339 |
-| 16 | anuttam-ramji | uc-berkeley-b | 1.160 | [0.877, 1.466] | 2% | 22% | 76% | 65 | 339 |
-| 17 | christopher-sims | northwestern-a | 1.080 | [0.789, 1.448] | 4% | 14% | 57% | 71 | 336 |
-| 18 | robert-wang | columbia-a | 1.068 | [0.872, 1.318] | 0% | 4% | 56% | 61 | 338 |
-| 19 | moses-kitakule | columbia-a | 1.068 | [0.768, 1.425] | 0% | 8% | 63% | 61 | 338 |
-| 20 | swapnil-garg | uc-berkeley-a | 1.067 | [0.759, 1.424] | 1% | 10% | 59% | 44 | 339 |
-| 21 | mitch-mccullar | penn-state | 1.065 | [0.865, 1.274] | 0% | 1% | 58% | 96 | 339 |
-| 22 | mattias-ehatamm | maryland-a | 1.006 | [0.808, 1.248] | 0% | 1% | 34% | 68 | 335 |
-| 23 | brendan-bethlehem | cambridge | 0.999 | [0.703, 1.270] | 0% | 2% | 36% | 71 | 339 |
-| 24 | nathaniel-hull | uc-berkeley-a | 0.986 | [0.772, 1.264] | 0% | 1% | 32% | 41 | 339 |
-| 25 | sky-li | toronto-a | 0.958 | [0.586, 1.272] | 0% | 0% | 32% | 60 | 350 |
-| 26 | sinecio-morales | johns-hopkins | 0.919 | [0.701, 1.182] | 0% | 1% | 16% | 79 | 340 |
-| 27 | adam-fine | chicago-a | 0.880 | [0.640, 1.164] | 0% | 0% | 12% | 54 | 359 |
-| 28 | simon-zimmerman | ohio-state | 0.876 | [0.704, 1.069] | 0% | 0% | 3% | 78 | 337 |
-| 29 | claire-jones | chicago-a | 0.852 | [0.634, 1.158] | 0% | 0% | 8% | 53 | 359 |
-| 30 | jaskaran-singh | ucla | 0.827 | [0.636, 1.027] | 0% | 0% | 1% | 70 | 360 |
+| Rank | Player | Team | Skill | 95% CI | P(Top 5) | P(Top 10) | P(Top 20) |
+|------|--------|------|------:|-------:|---------:|----------:|----------:|
+| 1 | vivian-malouf | uc-berkeley-a | 1.858 | [1.612, 2.107] | 100% | 100% | 100% |
+| 2 | jakob-myers | indiana | 1.705 | [1.470, 1.965] | 98% | 100% | 100% |
+| 3 | jack-lewis | bruin | 1.673 | [1.530, 1.838] | 100% | 100% | 100% |
+| 4 | ryan-rosenberg | nyu-a | 1.448 | [1.246, 1.700] | 54% | 88% | 100% |
+| 5 | yrwin-batan | mit | 1.441 | [1.118, 1.782] | 44% | 80% | 98% |
+| 6 | joseph-chambers | virginia | 1.380 | [1.147, 1.611] | 29% | 75% | 100% |
+| 7 | noah-chin | virginia-tech | 1.357 | [1.179, 1.567] | 20% | 74% | 99% |
+| 8 | joel-miles | minnesota | 1.323 | [1.173, 1.487] | 6% | 66% | 100% |
+| 9 | andrew-zeng | stanford-a | 1.287 | [1.046, 1.505] | 4% | 49% | 96% |
+| 10 | michal-gerasimiuk | stanford-a | 1.281 | [1.008, 1.561] | 12% | 46% | 96% |
+| 11 | ariel-faeder | pittsburgh | 1.274 | [0.997, 1.515] | 6% | 44% | 94% |
+| 12 | andrew-wang | illinois-a | 1.247 | [0.948, 1.553] | 8% | 38% | 90% |
+| 13 | rohan-ganeshan | harvard | 1.239 | [0.950, 1.544] | 7% | 36% | 88% |
+| 14 | charles-hang | washu | 1.217 | [1.038, 1.384] | 0% | 18% | 94% |
+| 15 | eve-fleisig | uc-berkeley-a | 1.164 | [0.843, 1.535] | 4% | 21% | 74% |
+| 16 | anuttam-ramji | uc-berkeley-b | 1.160 | [0.877, 1.466] | 2% | 22% | 76% |
+| 17 | christopher-sims | northwestern-a | 1.080 | [0.789, 1.448] | 4% | 14% | 57% |
+| 18 | robert-wang | columbia-a | 1.068 | [0.872, 1.318] | 0% | 4% | 56% |
+| 19 | moses-kitakule | columbia-a | 1.068 | [0.768, 1.425] | 0% | 8% | 63% |
+| 20 | swapnil-garg | uc-berkeley-a | 1.067 | [0.759, 1.424] | 1% | 10% | 59% |
+| 21 | mitch-mccullar | penn-state | 1.065 | [0.865, 1.274] | 0% | 1% | 58% |
+| 22 | mattias-ehatamm | maryland-a | 1.006 | [0.808, 1.248] | 0% | 1% | 34% |
+| 23 | brendan-bethlehem | cambridge | 0.999 | [0.703, 1.270] | 0% | 2% | 36% |
+| 24 | nathaniel-hull | uc-berkeley-a | 0.986 | [0.772, 1.264] | 0% | 1% | 32% |
+| 25 | sky-li | toronto-a | 0.958 | [0.586, 1.272] | 0% | 0% | 32% |
+| 26 | sinecio-morales | johns-hopkins | 0.919 | [0.701, 1.182] | 0% | 1% | 16% |
+| 27 | adam-fine | chicago-a | 0.880 | [0.640, 1.164] | 0% | 0% | 12% |
+| 28 | simon-zimmerman | ohio-state | 0.876 | [0.704, 1.069] | 0% | 0% | 3% |
+| 29 | claire-jones | chicago-a | 0.852 | [0.634, 1.158] | 0% | 0% | 8% |
+| 30 | jaskaran-singh | ucla | 0.827 | [0.636, 1.027] | 0% | 0% | 1% |
 
 ## History (Top 15)
 
