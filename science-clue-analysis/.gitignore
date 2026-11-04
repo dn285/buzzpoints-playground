@@ -1,0 +1,11 @@
+# Generated outputs — keep these local, never commit.
+# (Repo-root .gitignore already covers *.json; report.md needs an explicit rule
+#  because *.md is not globally ignored — README.md and rubric.md are tracked.)
+report.md
+report_*.md
+*_report.md
+science_tossups.json
+science_bonuses.json
+flags.json
+flags_bonus.json
+runs/

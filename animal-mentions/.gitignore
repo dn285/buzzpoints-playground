@@ -1,0 +1,5 @@
+# Generated outputs — keep these local, never commit.
+# (Repo-root .gitignore already covers *.json and *.csv.)
+report.md
+monkey_claims.md
+monkey_visuals.html
